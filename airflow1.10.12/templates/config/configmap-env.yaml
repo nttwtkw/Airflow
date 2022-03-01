@@ -1,0 +1,67 @@
+---
+# Source: airflow/templates/config/configmap-env.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-env
+  labels:
+    app: airflow
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+data:
+  ## Force UTC timezone
+  TZ: Etc/UTC
+
+  ## ----------------
+  ## Database
+  ## ----------------
+  DATABASE_HOST: "airflow-postgresql"
+  DATABASE_PORT: "5432"
+  DATABASE_USER: "postgres"
+  DATABASE_DB: "airflow"
+  # bash command which echos the URL encoded value of $DATABASE_PASSWORD
+  DATABASE_PASSWORD_CMD: |-
+    echo ${DATABASE_PASSWORD} | python3 -c "import urllib.parse; encoded_pass = urllib.parse.quote(input()); print(encoded_pass)"
+  # bash command which echos the DB connection string in SQLAlchemy format
+  DATABASE_SQLALCHEMY_CMD: |-
+    echo -n "postgresql+psycopg2://${DATABASE_USER}:$(eval $DATABASE_PASSWORD_CMD)@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_DB}"
+  # bash command which echos the DB connection string in Celery result_backend format
+  DATABASE_CELERY_CMD: |-
+    echo -n "db+postgresql://${DATABASE_USER}:$(eval $DATABASE_PASSWORD_CMD)@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_DB}"
+
+  ## ----------------
+  ## Airflow
+  ## ----------------
+  AIRFLOW__CORE__BASE_LOG_FOLDER: "/opt/airflow/logs"
+  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/dags"
+  AIRFLOW__CORE__DAG_PROCESSOR_MANAGER_LOG_LOCATION: "/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log"
+  AIRFLOW__CORE__DONOT_PICKLE: "false"
+  AIRFLOW__CORE__ENABLE_XCOM_PICKLING: "false" # for forward compatibility with 2.0
+  AIRFLOW__CORE__EXECUTOR: "KubernetesExecutor"
+  AIRFLOW__CORE__FERNET_KEY: "7T512UXSSmBOkpWimFHIVb8jK6lfmSAvx4mO6Arehnc="
+  AIRFLOW__CORE__SQL_ALCHEMY_CONN_CMD: |-
+    bash -c 'eval "$DATABASE_SQLALCHEMY_CMD"'
+  AIRFLOW__SCHEDULER__CHILD_PROCESS_LOG_DIRECTORY: "/opt/airflow/logs/scheduler"
+  AIRFLOW__WEBSERVER__BASE_URL: "http://localhost:8080"
+  AIRFLOW__WEBSERVER__WEB_SERVER_PORT: "8080"
+  ## ----------------
+  ## Airflow - KubernetesExecutor
+  ## ----------------
+  ## ----------------
+  ## Airflow - User Configs
+  ## ----------------
+  AIRFLOW__KUBERNETES__ENV_FROM_CONFIGMAP_REF: airflow-env
+  AIRFLOW__KUBERNETES__NAMESPACE: rdt-uat
+  AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY: registry.devopsnonprd.vayuktbcs:8082/chinnapatke01/airflow
+  AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG: 1.10.15-python3.8-1
+  AIRFLOW__KUBERNETES__WORKER_SERVICE_ACCOUNT_NAME: airflow
+  AIRFLOW__KUBERNETES__DAGS_IN_IMAGE: "True"
+  AIRFLOW__KUBERNETES__POD_TEMPLATE_FILE: "/tmp/pod-template.yaml"
+  AIRFLOW__KUBERNETES__DELETE_WORKER_PODS_ON_FAILURE: "False"
+  AIRFLOW__KUBERNETES__DELETE_WORKER_PODS: "False"
+  AIRFLOW__KUBERNETES__GIT_REPO: https://ikpdev:7LzxSdWyPWRCiEmswyee@gitlab.devopsnonprd.vayuktbcs/ikpdev/demoairflow.git
+  AIRFLOW__KUBERNETES__GIT_BRANCH: master
+  AIRFLOW__KUBERNETES__GIT_DAGS_FOLDER_MOUNT_POINT: /dags
+
+  AIRFLOW__CORE__KILLED_TASK_CLEANUP_TIME: "604800"

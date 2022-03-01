@@ -1,0 +1,84 @@
+---
+# Source: airflow/templates/config/configmap-scripts-git.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-scripts-git
+  labels:
+    app: airflow
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+data:
+  git-clone.sh: |
+    #!/bin/sh -e
+    REPO=$1
+    REF=$2
+    DIR=$3
+    REPO_HOST=$4
+    REPO_PORT=$5
+    PRIVATE_KEY=$6
+
+    mkdir -p ~/.ssh/
+
+    # ensure the git directory is empty, so we can safely clone
+    if [ -d "$DIR" ]; then
+      rm -rf $( find $DIR -mindepth 1 )
+    fi
+    git config --global http.sslverify false
+    git clone $REPO -b $REF $DIR
+  git-sync.sh: |
+    #!/bin/sh -e
+    REPO=$1
+    REF=$2
+    DIR=$3
+    REPO_HOST=$4
+    REPO_PORT=$5
+    PRIVATE_KEY=$6
+    SYNC_TIME=$7
+
+    mkdir -p ~/.ssh/
+    if [ -d "$DIR" ]; then
+      rm -rf $( find $DIR -mindepth 1 )
+    fi
+    git config --global http.sslverify false
+    git clone $REPO -b $REF $DIR
+
+    # to break the infinite loop when we receive SIGTERM
+    trap "exit 0" SIGTERM
+
+    cd $DIR
+    while true; do
+      git fetch origin $REF;
+      git reset --hard origin/$REF;
+      git clean -fd;
+      date;
+      sleep $SYNC_TIME;
+    done
+  git-sync-once.sh: |
+    #!/bin/sh -e
+    REPO=$1
+    REF=$2
+    DIR=$3
+    REPO_HOST=$4
+    REPO_PORT=$5
+    PRIVATE_KEY=$6
+    SYNC_TIME=$7
+
+    mkdir -p ~/.ssh/
+    if [ -d "$DIR" ]; then
+      rm -rf $( find $DIR -mindepth 1 )
+    fi
+    git config --global http.sslverify false
+    git clone $REPO -b $REF $DIR
+
+    # to break the infinite loop when we receive SIGTERM
+    trap "exit 0" SIGTERM
+
+    cd $DIR
+    git fetch origin $REF;
+    git reset --hard origin/$REF;
+    git clean -fd;
+    date;
+    sleep $SYNC_TIME;
+

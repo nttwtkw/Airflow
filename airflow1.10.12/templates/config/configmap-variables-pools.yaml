@@ -1,0 +1,17 @@
+---
+# Source: airflow/templates/config/configmap-variables-pools.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-variables-pools
+  labels:
+    app: airflow
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+data:
+  variables.json: |
+    {}
+    
+  pools.json: |
+    {}

@@ -1,0 +1,145 @@
+---
+# Source: airflow/templates/webserver/webserver-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-web
+  labels:
+    app: airflow
+    component: web
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+spec:
+  replicas: 1
+  minReadySeconds: 5
+  strategy:
+    # this is safe - multiple web pods can run concurrently
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: airflow
+      component: web
+      release: airflow
+  template:
+    metadata:
+      annotations:
+        checksum/config-env: f00ababce6a03f0769e0d23368794f96b936953cbce42b53295212783c28acea
+        checksum/config-git-clone: 60cfc05ea4cb7b78c03515c393ccc9275062873fe7b4de20b864e0093f8df8bb
+        checksum/config-scripts: b77494743f717874f361fc12b32ac962e207046e2b04ff56813dc28f627de000
+        checksum/dags-git-ref: fc613b4dfd6736a7bd268c8a0e74ed0d1c04a959f59dd74ef2874983fd443fc9
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+      labels:
+        app: airflow
+        component: web
+        release: airflow
+    spec:
+      imagePullSecrets:
+        - name: image-pull-secret
+      restartPolicy: Always
+      serviceAccountName: airflow
+      containers:
+        - name: git-sync
+          image: registry.devopsnonprd.vayuktbcs:8082/alpine/git:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: "airflow-env"
+          env:            
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgresql
+                  key: postgresql-password
+            - name: GIT_DISCOVERY_ACROSS_FILESYSTEM
+              value: '1'
+          command:
+            - /home/airflow/git/git-sync.sh
+          args:
+            - "https://ikpdev:7LzxSdWyPWRCiEmswyee@gitlab.devopsnonprd.vayuktbcs/ikpdev/demoairflow.git"
+            - "master"
+            - "/dags"
+            - ""
+            - "22"
+            - "id_rsa"
+            - "60"
+          volumeMounts:
+            - name: git-clone
+              mountPath: /home/airflow/git
+            - name: dags-data
+              mountPath: "/dags"
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+        - name: airflow-web
+          image: registry.devopsnonprd.vayuktbcs:8082/chinnapatke01/airflow-vaex:1.1.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: web
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: "airflow-env"
+          env:            
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgresql
+                  key: postgresql-password
+            - name: GIT_DISCOVERY_ACROSS_FILESYSTEM
+              value: '1'
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 4Gi
+            requests:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: scripts
+              mountPath: /home/airflow/scripts
+            - name: dags-data
+              mountPath: /opt/airflow/dags
+              subPath: 
+          command:
+            - "/usr/bin/dumb-init"
+            - "--"
+          args:
+            - "bash"
+            - "-c"
+            - >
+              true \
+               && mkdir -p /home/airflow/.local/bin \
+               && export PATH="/home/airflow/.local/bin:$PATH" \
+               && echo "*** running webserver..." \
+               && exec airflow webserver
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: "/health"
+              port: web
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 2
+      volumes:
+        - name: scripts
+          configMap:
+            name: airflow-scripts
+            defaultMode: 0755
+        - name: dags-data
+          persistentVolumeClaim:
+            claimName: airflow
+        - name: git-clone
+          configMap:
+            name: airflow-scripts-git
+            defaultMode: 0755

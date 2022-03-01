@@ -1,0 +1,99 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dummy-name
+spec:
+  initContainers:
+    - name: git-sync
+      image: registry.devopsnonprd.vayuktbcs:8082/alpine/git:latest
+      imagePullPolicy: IfNotPresent
+      envFrom:
+        - configMapRef:
+            name: "airflow-env"
+      env:
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: airflow-postgresql
+              key: postgresql-password
+        - name: GIT_DISCOVERY_ACROSS_FILESYSTEM
+          value: '1'
+        - name: GIT_SYNC_ONE_TIME
+          value: 'true'
+      command:
+        - /home/airflow/git/git-sync-once.sh
+      args:
+        - "https://ikpdev:7LzxSdWyPWRCiEmswyee@gitlab.devopsnonprd.vayuktbcs/ikpdev/demoairflow.git"
+        - "master"
+        - "/dags"
+        - ""
+        - "22"
+        - "id_rsa"
+        - "10"
+      volumeMounts:
+        - name: git-clone
+          mountPath: /home/airflow/git
+        - name: dags
+          mountPath: "/dags"
+      resources:
+        limits:
+          cpu: 0.5
+          memory: 512Mi
+        requests:
+          cpu: 0.25
+          memory: 64Mi
+  containers:
+    - args: []
+      command: ['ls -l /opt/airflow/dags']
+      env:
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: LocalExecutor
+        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+          value: postgresql+psycopg2://postgres:airflow@airflow-postgresql:5432/airflow
+      envFrom:
+      - configMapRef:
+          name: airflow-env
+      image: registry.devopsnonprd.vayuktbcs:8082/chinnapatke01/airflow-vaex:latest
+      imagePullPolicy: IfNotPresent
+      name: base
+      ports: []
+      resources:
+        limits:
+          cpu: 0.5
+          memory: 8196Mi
+        requests:
+          cpu: 0.25
+          memory: 512Mi
+      volumeMounts:
+        - mountPath: "/opt/airflow/logs"
+          name: airflow-logs
+        - mountPath: /opt/airflow/dags
+          name: dags
+          readOnly: false
+  imagePullSecrets:
+  - name: image-pull-secret
+  hostNetwork: false
+  restartPolicy: Never
+  nodeSelector:
+    {}
+  affinity:
+    {}
+  tolerations:
+    []
+  serviceAccountName: 'airflow'
+  volumes:
+    - name: dags
+      emptyDir: {}
+    - emptyDir: {}
+      name: airflow-logs
+    - configMap:
+        name: airflow-airflow-config
+      name: airflow-config
+    - configMap:
+        name: airflow-airflow-config
+      name: airflow-local-settings
+    - name: git-clone
+      configMap:
+        name: airflow-scripts-git
+        defaultMode: 0755

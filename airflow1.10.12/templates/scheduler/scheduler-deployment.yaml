@@ -1,0 +1,170 @@
+---
+# Source: airflow/templates/scheduler/scheduler-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  labels:
+    app: airflow
+    component: scheduler
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+spec:
+  replicas: 1
+  strategy:
+    # this is safe as long as `maxSurge` is 0
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 100%
+  selector:
+    matchLabels:
+      app: airflow
+      component: scheduler
+      release: airflow
+  template:
+    metadata:
+      annotations:
+        checksum/config-env: f00ababce6a03f0769e0d23368794f96b936953cbce42b53295212783c28acea
+        checksum/config-git-clone: 60cfc05ea4cb7b78c03515c393ccc9275062873fe7b4de20b864e0093f8df8bb
+        checksum/config-scripts: b77494743f717874f361fc12b32ac962e207046e2b04ff56813dc28f627de000
+        checksum/config-variables-pools: 019704b5c3da834290f4af581ae48e98036ee46e96684a71fcf951024b38fa6e
+        checksum/secret-connections: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+        checksum/dags-git-ref: fc613b4dfd6736a7bd268c8a0e74ed0d1c04a959f59dd74ef2874983fd443fc9
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+      labels:
+        app: airflow
+        component: scheduler
+        release: airflow
+    spec:
+      imagePullSecrets:
+        - name: image-pull-secret
+      restartPolicy: Always
+      serviceAccountName: airflow
+      containers:
+        - name: git-sync
+          image: registry.devopsnonprd.vayuktbcs:8082/alpine/git:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: "airflow-env"
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgresql
+                  key: postgresql-password
+            - name: GIT_DISCOVERY_ACROSS_FILESYSTEM
+              value: '1'
+          command:
+            - /home/airflow/git/git-sync.sh
+          args:
+            - "https://ikpdev:7LzxSdWyPWRCiEmswyee@gitlab.devopsnonprd.vayuktbcs/ikpdev/demoairflow.git"
+            - "master"
+            - "/dags"
+            - ""
+            - "22"
+            - "id_rsa"
+            - "60"
+          volumeMounts:
+            - name: git-clone
+              mountPath: /home/airflow/git
+            - name: dags-data
+              mountPath: "/dags"
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+        - name: airflow-scheduler
+          image: registry.devopsnonprd.vayuktbcs:8082/chinnapatke01/airflow-vaex:1.1.4
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: "airflow-env"
+          env:            
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgresql
+                  key: postgresql-password
+            - name: GIT_DISCOVERY_ACROSS_FILESYSTEM
+              value: '1'
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: scripts
+              mountPath: /home/airflow/scripts
+            - name: dags-data
+              mountPath: /opt/airflow/dags
+              subPath: 
+            - name: variables-pools
+              mountPath: /home/airflow/variables-pools/
+            - name: pod-template
+              mountPath: /tmp/
+          command:
+            - "/usr/bin/dumb-init"
+            - "--"
+          args:
+            - "bash"
+            - "-c"
+            - >
+              true \
+               && mkdir -p /home/airflow/.local/bin \
+               && export PATH="/home/airflow/.local/bin:$PATH" \
+               && echo "*** upgrading airflow db..." \
+               && airflow upgradedb \
+               && echo "*** adding Airflow variables..." \
+               && airflow variables -i /home/airflow/variables-pools/variables.json \
+               && echo "*** adding Airflow pools..." \
+               && airflow pool -i /home/airflow/variables-pools/pools.json \
+               && echo "*** running scheduler..." \
+               && exec airflow scheduler -n -1
+          livenessProbe:
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            failureThreshold: 5
+            exec:
+              command:
+              - python
+              - -Wignore
+              - -c
+              - |
+                import os
+                os.environ['AIRFLOW__CORE__LOGGING_LEVEL'] = 'ERROR'
+                os.environ['AIRFLOW__LOGGING__LOGGING_LEVEL'] = 'ERROR'
+                from airflow.jobs.scheduler_job import SchedulerJob
+                from airflow.utils.net import get_hostname
+                import sys
+                job = SchedulerJob.most_recent_job()
+                sys.exit(0 if job.is_alive() and job.hostname == get_hostname() else 1)
+      volumes:
+        - name: scripts
+          configMap:
+            name: airflow-scripts
+            defaultMode: 0755
+        - name: dags-data
+          persistentVolumeClaim:
+            claimName: airflow
+        - name: git-clone
+          configMap:
+            name: airflow-scripts-git
+            defaultMode: 0755
+        - name: variables-pools
+          configMap:
+            name: airflow-variables-pools
+            defaultMode: 0755
+        - name: pod-template
+          configMap:
+            name: pod-template
+            items:
+              - key: pod-template.yaml
+                path: pod-template.yaml

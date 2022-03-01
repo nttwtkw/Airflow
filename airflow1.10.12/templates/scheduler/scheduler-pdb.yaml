@@ -1,0 +1,19 @@
+---
+# Source: airflow/templates/scheduler/scheduler-pdb.yaml
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: airflow-scheduler
+  labels:
+    app: airflow
+    component: scheduler
+    chart: airflow-7.16.0
+    release: airflow
+    heritage: Helm
+spec:
+  maxUnavailable: 100%
+  selector:
+    matchLabels:
+      app: airflow
+      component: scheduler
+      release: airflow
