@@ -85,7 +85,8 @@ spec:
   volumes:
     - name: dags
       emptyDir: {}
-    - emptyDir: {}
+    - persistentVolumeClaim:
+            claimName: airflow-logs
       name: airflow-logs
     - configMap:
         name: airflow-airflow-config
