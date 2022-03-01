@@ -13,3 +13,5 @@ kubectl create -f template/<sub folder>
 kubectl create -f charts/postgresql/template
 kubectl create cm pod-template --from-file=template/config/pod-template.yaml
 ```
+You have to create pod and mount to task logs dir to view log
+
